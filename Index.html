@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Live Earth - Demo</title>
+<title>Live Earth - PeerJS</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { margin: 0; overflow: hidden; background: black; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; }
@@ -16,6 +16,8 @@ body { margin: 0; overflow: hidden; background: black; font-family: -apple-syste
 #counter { top: 50px; }
 #connection-status { top: 90px; font-size: 11px; }
 #connection-status.connected { color: #00ff88; }
+#connection-status.connecting { color: #ffaa00; }
+#connection-status.disconnected { color: #ff4444; }
 #setup-panel {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   background: rgba(0,0,0,.92); color: white; padding: 25px; border-radius: 20px;
@@ -35,6 +37,15 @@ body { margin: 0; overflow: hidden; background: black; font-family: -apple-syste
 }
 #setup-panel button:disabled { opacity: 0.5; cursor: not-allowed; }
 #setup-panel .hint { font-size: 12px; color: #888; margin-top: 12px; line-height: 1.5; }
+#setup-panel .id-box {
+  background: rgba(0,255,204,0.1); border: 1px solid #00ffcc; padding: 15px;
+  border-radius: 12px; margin: 15px 0; font-size: 20px; font-weight: bold;
+  color: #00ffcc; letter-spacing: 2px; font-family: monospace;
+}
+#setup-panel .copy-btn {
+  background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.3);
+  padding: 10px; margin-top: 5px; font-size: 14px;
+}
 #setup-panel .error-box {
   background: rgba(255,0,0,0.2); border: 1px solid #ff4444; padding: 10px; border-radius: 8px;
   color: #ff8888; font-size: 13px; margin-top: 10px; display: none;
@@ -111,22 +122,32 @@ body { margin: 0; overflow: hidden; background: black; font-family: -apple-syste
 </head>
 <body>
 
-<div id="info">🌍 Live Earth - Demo</div>
+<div id="info">🌍 Live Earth - PeerJS</div>
 <div id="counter">🟢 0 online</div>
-<div id="connection-status" class="connected">🟢 Klaar</div>
+<div id="connection-status" class="disconnected">⚪ Niet verbonden</div>
 
 <div id="setup-panel">
   <h2>🌍 Live Earth</h2>
-  <p>Werkende demo - Test het volledige concept</p>
+  <p>Echte verbinding tussen 2 telefoons</p>
   <input type="text" id="userName" placeholder="Jouw naam" value="" autocomplete="off">
-  <button id="startBtn" onclick="startDemo()">🚀 Start Demo</button>
+  <button id="startBtn" onclick="startPeer()">🚀 Start</button>
+  <div id="myIdSection" style="display:none; margin-top:15px;">
+    <p style="color:#00ffcc; font-size:13px;">📋 Jouw ID (deel met vriend):</p>
+    <div class="id-box" id="myPeerId"></div>
+    <button class="copy-btn" onclick="copyId()">📋 Kopieer ID</button>
+  </div>
+  <div id="connectSection" style="display:none; margin-top:15px;">
+    <p style="color:#ffaa00; font-size:13px;">📋 Plak ID van je vriend:</p>
+    <input type="text" id="friendPeerId" placeholder="Vriend ID..." autocomplete="off">
+    <button onclick="connectToFriend()">🔗 Verbind</button>
+  </div>
   <div class="error-box" id="errorBox"></div>
   <div class="success-box" id="successBox"></div>
   <p class="hint">
-    💡 Deze demo toont het volledige concept<br>
+    💡 Geen account nodig<br>
     📍 Camera & locatie toegang vereist<br>
-    🎥 "Live feed" opent jouw camera (lokaal)<br>
-    👤 Je vriend verschijnt als test-gebruiker
+    🔄 Deel ID via WhatsApp/Signal<br>
+    📱 Werkt op 2 telefoons
   </p>
 </div>
 
@@ -149,28 +170,31 @@ body { margin: 0; overflow: hidden; background: black; font-family: -apple-syste
   <p id="popupStatus">🟢 Online</p>
   <div class="video-container" id="videoContainer">
     <video id="remoteVideo" autoplay playsinline></video>
-    <div class="video-status" id="videoStatus">Camera starten...</div>
+    <div class="video-status" id="videoStatus">Verbinden...</div>
   </div>
-  <button id="callBtn" onclick="startLiveFeed()">📹 Bekijk live feed</button>
+  <button id="callBtn" onclick="startVideoCall()">📹 Bekijk live feed</button>
   <button class="secondary" onclick="closePopup()">Sluiten</button>
 </div>
 
 <div id="loading">
   <div class="spinner"></div>
-  <p id="loadingText">Camera starten...</p>
+  <p id="loadingText">Verbinden...</p>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 
 <script>
-let myId = Math.random().toString(36).substr(2, 9);
+let myPeerId = null;
 let myName = '';
 let myLocation = { lat: 52.3676, lng: 4.9041, city: 'Amsterdam' };
 let users = new Map();
 let selectedUser = null;
 let localStream = null;
-let isStarted = false;
+let peer = null;
+let currentCall = null;
+let isConnected = false;
 
 function showError(msg) {
   const el = document.getElementById('errorBox');
@@ -188,6 +212,25 @@ function setLoading(text) {
 }
 function hideLoading() {
   document.getElementById('loading').classList.remove('active');
+}
+function updateStatus(status, text) {
+  const el = document.getElementById('connection-status');
+  el.className = status;
+  el.textContent = text;
+}
+function copyId() {
+  const id = document.getElementById('myPeerId').textContent;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(id).then(() => alert('ID gekopieerd: ' + id));
+  } else {
+    const input = document.createElement('input');
+    input.value = id;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    document.body.removeChild(input);
+    alert('ID gekopieerd: ' + id);
+  }
 }
 
 const scene = new THREE.Scene();
@@ -268,7 +311,7 @@ function createUserDot(userId, lat, lng, name, city) {
   return group;
 }
 
-async function startDemo() {
+async function startPeer() {
   myName = document.getElementById('userName').value.trim();
   if (!myName) {
     showError('Vul je naam in!');
@@ -296,52 +339,117 @@ async function startDemo() {
         myLocation.city = 'Mijn Locatie';
       } catch (e) {}
     }
-    hideLoading();
-    isStarted = true;
-    document.getElementById('setup-panel').style.display = 'none';
-    document.getElementById('user-list').style.display = 'block';
-    document.getElementById('counter').textContent = '🟢 2 online';
-    const myMesh = createUserDot(myId, myLocation.lat, myLocation.lng, myName + ' (jij)', myLocation.city);
-    users.set(myId, { id: myId, lat: myLocation.lat, lng: myLocation.lng, name: myName + ' (jij)', city: myLocation.city, mesh: myMesh });
-    const friendId = 'friend_demo';
-    const friendLat = myLocation.lat + (Math.random() - 0.5) * 2;
-    const friendLng = myLocation.lng + (Math.random() - 0.5) * 2;
-    const friendMesh = createUserDot(friendId, friendLat, friendLng, 'Vriend (Demo)', 'In de buurt');
-    users.set(friendId, { id: friendId, lat: friendLat, lng: friendLng, name: 'Vriend (Demo)', city: 'In de buurt', mesh: friendMesh });
-    updateUserList();
-    showSuccess('Demo gestart! Tik op het groene punt van je vriend.');
+    setLoading('PeerJS starten...');
+    peer = new Peer({
+      host: '0.peerjs.com',
+      port: 443,
+      secure: true,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+      }
+    });
+    peer.on('open', (id) => {
+      myPeerId = id;
+      hideLoading();
+      document.getElementById('myPeerId').textContent = id;
+      document.getElementById('myIdSection').style.display = 'block';
+      document.getElementById('connectSection').style.display = 'block';
+      showSuccess('Klaar! Deel jouw ID met je vriend.');
+      btn.textContent = '✅ Klaar';
+      const mesh = createUserDot(myPeerId, myLocation.lat, myLocation.lng, myName + ' (jij)', myLocation.city);
+      users.set(myPeerId, { id: myPeerId, lat: myLocation.lat, lng: myLocation.lng, name: myName + ' (jij)', city: myLocation.city, mesh });
+      updateCounter();
+    });
+    peer.on('connection', (conn) => {
+      handleConnection(conn);
+    });
+    peer.on('call', (call) => {
+      call.answer(localStream);
+      call.on('stream', (remoteStream) => {
+        const remoteVideo = document.getElementById('remoteVideo');
+        remoteVideo.srcObject = remoteStream;
+        document.getElementById('videoContainer').classList.add('active');
+        document.getElementById('videoStatus').style.display = 'none';
+      });
+      currentCall = call;
+    });
+    peer.on('error', (err) => {
+      console.error('PeerJS error:', err);
+      showError('PeerJS fout: ' + err.message);
+    });
   } catch (err) {
     hideLoading();
     btn.disabled = false;
-    btn.textContent = '🚀 Start Demo';
-    showError('Camera fout: ' + err.message + '. Zorg dat je toestemming geeft!');
+    btn.textContent = '🚀 Start';
+    showError('Camera fout: ' + err.message);
   }
 }
 
-async function startLiveFeed() {
-  if (!selectedUser) return;
-  const callBtn = document.getElementById('callBtn');
-  callBtn.disabled = true;
-  callBtn.textContent = '📹 Starten...';
-  try {
+function handleConnection(conn) {
+  conn.on('open', () => {
+    conn.send({
+      type: 'user-info',
+      id: myPeerId,
+      name: myName,
+      lat: myLocation.lat,
+      lng: myLocation.lng,
+      city: myLocation.city
+    });
+  });
+  conn.on('data', (data) => {
+    if (data.type === 'user-info') {
+      if (!users.has(data.id)) {
+        const mesh = createUserDot(data.id, data.lat, data.lng, data.name, data.city);
+        users.set(data.id, {
+          id: data.id, lat: data.lat, lng: data.lng,
+          name: data.name, city: data.city, mesh
+        });
+        updateCounter();
+        updateUserList();
+        showSuccess(data.name + ' is online!');
+      }
+    }
+  });
+}
+
+function connectToFriend() {
+  const friendId = document.getElementById('friendPeerId').value.trim();
+  if (!friendId) {
+    showError('Plak de ID van je vriend!');
+    return;
+  }
+  setLoading('Verbinden met vriend...');
+  const conn = peer.connect(friendId);
+  handleConnection(conn);
+  const call = peer.call(friendId, localStream);
+  call.on('stream', (remoteStream) => {
     const remoteVideo = document.getElementById('remoteVideo');
-    remoteVideo.srcObject = localStream;
+    remoteVideo.srcObject = remoteStream;
     document.getElementById('videoContainer').classList.add('active');
     document.getElementById('videoStatus').style.display = 'none';
-    callBtn.textContent = '📹 Live!';
-    callBtn.disabled = false;
-  } catch (err) {
-    callBtn.disabled = false;
-    callBtn.textContent = '📹 Bekijk live feed';
-    alert('Camera fout: ' + err.message);
-  }
+  });
+  currentCall = call;
+  hideLoading();
+  isConnected = true;
+  updateStatus('connected', '🟢 Verbonden!');
+  showSuccess('Verbonden! Tik op het groene punt van je vriend.');
+  document.getElementById('setup-panel').style.display = 'none';
+  document.getElementById('user-list').style.display = 'block';
+}
+
+function updateCounter() {
+  const count = users.size;
+  document.getElementById('counter').textContent = `🟢 ${count} online`;
 }
 
 function updateUserList() {
   const container = document.getElementById('userListContent');
   container.innerHTML = '';
   users.forEach((user) => {
-    if (user.id === myId) return;
+    if (user.id === myPeerId) return;
     const div = document.createElement('div');
     div.className = 'user-item';
     div.innerHTML = `<div style="font-weight:bold;">${user.name}</div><div class="status">📍 ${user.city}</div>`;
@@ -352,7 +460,7 @@ function updateUserList() {
 
 function selectUser(userId) {
   const user = users.get(userId);
-  if (user && user.id !== myId) {
+  if (user && user.id !== myPeerId) {
     selectedUser = user;
     showPopup(user);
     const pos = latLngToVector3(user.lat, user.lng, 2);
@@ -390,11 +498,18 @@ function closePopup() {
   callBtn.textContent = '📹 Bekijk live feed';
 }
 
+function startVideoCall() {
+  if (!selectedUser) return;
+  document.getElementById('videoContainer').classList.add('active');
+  document.getElementById('videoStatus').style.display = 'none';
+  document.getElementById('callBtn').textContent = '📹 Live!';
+}
+
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 
 function tap(x, y) {
-  if (!isStarted) return;
+  if (!isConnected) return;
   pointer.x = (x / innerWidth) * 2 - 1;
   pointer.y = -(y / innerHeight) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
@@ -406,7 +521,7 @@ function tap(x, y) {
     while (hitObj.parent && !hitObj.userData.userId) {
       hitObj = hitObj.parent;
     }
-    if (hitObj.userData && hitObj.userData.userId && hitObj.userData.userId !== myId) {
+    if (hitObj.userData && hitObj.userData.userId && hitObj.userData.userId !== myPeerId) {
       selectUser(hitObj.userData.userId);
       document.getElementById('info').innerText = `📡 ${hitObj.userData.name}`;
     }
