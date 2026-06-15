@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Live Earth</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { margin: 0; overflow: hidden; background: black; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; }
+#info, #counter, #connection-status {
+  position: absolute; left: 10px; color: white;
+  background: rgba(0,0,0,.7); padding: 8px 12px; border-radius: 10px; z-index: 10;
+  font-size: 13px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);
+}
+#info { top: 10px; font-weight: bold; font-size: 15px; }
+#counter { top: 50px; }
+#connection-status { top: 90px; font-size: 11px; }
+#connection-status.connected { color: #00ff88; }
+#connection-status.connecting { color: #ffaa00; }
+#connection-status.disconnected { color: #ff4444; }
+#setup-panel {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  background: rgba(0,0,0,.92); color: white; padding: 25px; border-radius: 20px;
+  z-index: 100; text-align: center; width: 90%; max-width: 400px;
+  backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.2);
+}
+#setup-panel h2 { margin-bottom: 15px; color: #00ffcc; font-size: 22px; }
+#setup-panel p { color: #aaa; margin-bottom: 20px; font-size: 14px; }
+#setup-panel input {
+  width: 100%; padding: 14px; margin: 8px 0; border-radius: 12px; border: 1px solid #444;
+  background: #222; color: white; font-size: 16px; -webkit-appearance: none;
+}
+#setup-panel button {
+  width: 100%; padding: 16px; margin-top: 15px; border-radius: 12px; border: none;
+  background: linear-gradient(135deg, #00ffcc, #00aaff); color: black; font-weight: bold;
+  cursor: pointer; font-size: 18px; -webkit-appearance: none;
+}
+#setup-panel button:disabled { opacity: 0.5; cursor: not-allowed; }
+#setup-panel .hint { font-size: 12px; color: #888; margin-top: 12px; line-height: 1.5; }
+#setup-panel .room-display {
+  background: rgba(0,255,204,0.1); border: 1px solid #00ffcc; padding: 15px;
+  border-radius: 12px; margin: 15px 0; font-size: 28px; font-weight: bold;
+  color: #00ffcc; letter-spacing: 3px; font-family: monospace;
+}
+#setup-panel .copy-btn {
+  background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.3);
+  padding: 10px; margin-top: 5px; font-size: 14px;
+}
+#setup-panel .error-box {
+  background: rgba(255,0,0,0.2); border: 1px solid #ff4444; padding: 10px; border-radius: 8px;
+  color: #ff8888; font-size: 13px; margin-top: 10px; display: none;
+}
+#setup-panel .success-box {
+  background: rgba(0,255,136,0.2); border: 1px solid #00ff88; padding: 10px; border-radius: 8px;
+  color: #00ff88; font-size: 13px; margin-top: 10px; display: none;
+}
+#popup {
+  display: none; position: absolute; bottom: 10px; left: 50%;
+  transform: translateX(-50%); width: 95%; max-width: 400px;
+  background: rgba(0,0,0,.92); color: white; padding: 20px;
+  border-radius: 20px; z-index: 20; backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.2);
+}
+#popup h3 { margin-bottom: 12px; color: #00ffcc; font-size: 18px; }
+#popup p { margin: 6px 0; font-size: 14px; }
+#popup .profile-info { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+#popup .avatar {
+  width: 45px; height: 45px; border-radius: 50%;
+  background: linear-gradient(135deg, #00ffcc, #00aaff);
+  display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold;
+}
+#popup .video-container {
+  width: 100%; height: 180px; background: #111; border-radius: 12px;
+  margin: 12px 0; display: none; align-items: center; justify-content: center;
+  overflow: hidden; position: relative;
+}
+#popup .video-container.active { display: flex; }
+#popup video {
+  width: 100%; height: 100%; object-fit: cover; border-radius: 12px;
+}
+#popup .video-status { position: absolute; color: #888; font-size: 13px; }
+#popup button {
+  width: 100%; padding: 14px; margin-top: 8px; border-radius: 12px; border: none;
+  background: linear-gradient(135deg, #00ffcc, #00aaff); color: black; font-weight: bold;
+  cursor: pointer; font-size: 15px; -webkit-appearance: none;
+}
+#popup button.secondary {
+  background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.3);
+}
+#popup button:disabled { opacity: 0.5; }
+#local-video {
+  position: absolute; top: 10px; right: 10px; width: 120px; height: 90px;
+  border-radius: 12px; z-index: 10; border: 2px solid rgba(0,255,204,0.5);
+  background: #111; display: none; object-fit: cover;
+}
+#local-video.active { display: block; }
+#user-list {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  background: rgba(0,0,0,.7); padding: 12px; border-radius: 15px;
+  z-index: 10; max-width: 180px; backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.1); display: none;
+}
+#user-list h4 { color: #00ffcc; margin-bottom: 8px; font-size: 13px; }
+#user-list .user-item {
+  padding: 8px; margin: 4px 0; border-radius: 8px; background: rgba(255,255,255,0.05);
+  font-size: 12px; cursor: pointer; transition: all 0.2s;
+}
+#user-list .user-item:hover { background: rgba(0,255,204,0.2); }
+#user-list .user-item .status { color: #00ff88; font-size: 10px; }
+#loading {
+  display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.9); z-index: 300; align-items: center; justify-content: center; flex-direction: column;
+}
+#loading.active { display: flex; }
+#loading .spinner {
+  width: 50px; height: 50px; border: 3px solid rgba(0,255,204,0.3);
+  border-top-color: #00ffcc; border-radius: 50%; animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#loading p { color: #aaa; margin-top: 20px; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div id="info">🌍 Live Earth</div>
+<div id="counter">🟢 0 online</div>
+<div id="connection-status" class="disconnected">⚪ Geen verbinding</div>
+
+<div id="setup-panel">
+  <h2>🌍 Live Earth</h2>
+  <p>Directe P2P verbinding</p>
+  <input type="text" id="userName" placeholder="Jouw naam" value="" autocomplete="off">
+  <button id="startBtn" onclick="startConnection()">🔗 Maak verbinding</button>
+  <div id="offerSection" style="display:none; margin-top:15px;">
+    <p style="color:#00ffcc; font-size:13px;">📋 Kopieer deze code:</p>
+    <div class="code-box" id="offerCode"></div>
+    <button class="copy-btn" onclick="copyCode()">📋 Kopieer</button>
+  </div>
+  <div id="answerSection" style="display:none; margin-top:15px;">
+    <p style="color:#ffaa00; font-size:13px;">📋 Plak code van vriend:</p>
+    <textarea id="answerInput" placeholder="Plak hier..." style="width:100%; min-height:80px; background:#222; color:white; border:1px solid #444; border-radius:8px; padding:10px; font-size:11px; font-family:monospace;"></textarea>
+    <button onclick="completeConnection()">✅ Verbind</button>
+  </div>
+  <div class="error-box" id="errorBox"></div>
+  <div class="success-box" id="successBox"></div>
+  <p class="hint">
+    💡 Camera & locatie toegang vereist<br>
+    🔄 Deel codes via WhatsApp/Signal<br>
+    📱 Werkt op mobiel browsers
+  </p>
+</div>
+
+<div id="user-list">
+  <h4>👥 Online</h4>
+  <div id="userListContent"></div>
+</div>
+
+<<video id="local-video" autoplay muted playsinline></video>
+
+<div id="popup">
+  <div class="profile-info">
+    <div class="avatar" id="popupAvatar">👤</div>
+    <div>
+      <h3 id="popupName">Gebruiker</h3>
+      <p id="popupLocation">📍 Locatie onbekend</p>
+    </div>
+  </div>
+  <p id="popupTime">🕒 --:--</p>
+  <p id="popupStatus">🟢 Online</p>
+  <div class="video-container" id="videoContainer">
+    <video id="remoteVideo" autoplay playsinline></video>
+    <div class="video-status" id="videoStatus">Verbinden...</div>
+  </div>
+  <button id="callBtn" onclick="startCall()">📹 Bekijk live feed</button>
+  <button class="secondary" onclick="closePopup()">Sluiten</button>
+</div>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <p id="loadingText">Camera starten...</p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+let myId = Math.random().toString(36).substr(2, 9);
+let myName = '';
+let myLocation = { lat: 52.3676, lng: 4.9041, city: 'Amsterdam' };
+let users = new Map();
+let selectedUser = null;
+let localStream = null;
+let peerConnection = null;
+let isConnected = false;
+
+function showError(msg) {
+  const el = document.getElementById('errorBox');
+  el.textContent = '❌ ' + msg;
+  el.style.display = 'block';
+}
+function showSuccess(msg) {
+  const el = document.getElementById('successBox');
+  el.textContent = '✅ ' + msg;
+  el.style.display = 'block';
+}
+function setLoading(text) {
+  document.getElementById('loadingText').textContent = text;
+  document.getElementById('loading').classList.add('active');
+}
+function hideLoading() {
+  document.getElementById('loading').classList.remove('active');
+}
+function updateStatus(status, text) {
+  const el = document.getElementById('connection-status');
+  el.className = status;
+  el.textContent = text;
+}
+function copyCode() {
+  const code = document.getElementById('offerCode').textContent;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(code).then(() => alert('Code gekopieerd!'));
+  } else {
+    const input = document.createElement('input');
+    input.value = code;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    document.body.removeChild(input);
+    alert('Code gekopieerd!');
+  }
+}
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+camera.position.z = 2.7;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.minDistance = 1.5;
+controls.maxDistance = 5;
+
+scene.add(new THREE.AmbientLight(0x444444));
+const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+sun.position.set(5, 0, 5);
+scene.add(sun);
+
+const earth = new THREE.Mesh(
+  new THREE.SphereGeometry(1, 64, 64),
+  new THREE.MeshPhongMaterial({
+    map: new THREE.TextureLoader().load("https://threejs.org/examples/textures/land_ocean_ice_cloud_2048.jpg")
+  })
+);
+scene.add(earth);
+
+const clouds = new THREE.Mesh(
+  new THREE.SphereGeometry(1.01, 64, 64),
+  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
+);
+scene.add(clouds);
+
+const starGeometry = new THREE.BufferGeometry();
+const starCount = 2000;
+const starPositions = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount * 3; i++) {
+  starPositions[i] = (Math.random() - 0.5) * 100;
+}
+starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+const stars = new THREE.Points(starGeometry, new THREE.PointsMaterial({ color: 0xffffff, size: 0.1 }));
+scene.add(stars);
+
+function latLngToVector3(lat, lng, radius = 1) {
+  const phi = (90 - lat) * (Math.PI / 180);
+  const theta = (lng + 180) * (Math.PI / 180);
+  return new THREE.Vector3(
+    -radius * Math.sin(phi) * Math.cos(theta),
+    radius * Math.cos(phi),
+    radius * Math.sin(phi) * Math.sin(theta)
+  );
+}
+
+function createUserDot(userId, lat, lng, name, city) {
+  const position = latLngToVector3(lat, lng, 1.02);
+  const group = new THREE.Group();
+  const dot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.04, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.9 })
+  );
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.05, 0.07, 32),
+    new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.4, side: THREE.DoubleSide })
+  );
+  ring.lookAt(position.clone().multiplyScalar(2));
+  const pulse = new THREE.Mesh(
+    new THREE.RingGeometry(0.08, 0.09, 32),
+    new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.2, side: THREE.DoubleSide })
+  );
+  pulse.lookAt(position.clone().multiplyScalar(2));
+  group.add(dot); group.add(ring); group.add(pulse);
+  group.position.copy(position);
+  group.userData = { userId, lat, lng, name, city, dot, ring, pulse };
+  earth.add(group);
+  return group;
+}
+
+const RTC_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ]
+};
+
+async function startConnection() {
+  myName = document.getElementById('userName').value.trim();
+  if (!myName) {
+    showError('Vul je naam in!');
+    return;
+  }
+  const btn = document.getElementById('startBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Bezig...';
+  setLoading('Camera starten...');
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: 'user' }, 
+      audio: false 
+    });
+    document.getElementById('local-video').srcObject = localStream;
+    document.getElementById('local-video').classList.add('active');
+    setLoading('Locatie ophalen...');
+    if (navigator.geolocation) {
+      try {
+        const pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000 });
+        });
+        myLocation.lat = pos.coords.latitude;
+        myLocation.lng = pos.coords.longitude;
+        myLocation.city = 'Mijn Locatie';
+      } catch (e) {}
+    }
+    setLoading('Verbinding voorbereiden...');
+    peerConnection = new RTCPeerConnection(RTC_CONFIG);
+    localStream.getTracks().forEach(track => {
+      peerConnection.addTrack(track, localStream);
+    });
+    peerConnection.ontrack = (event) => {
+      const remoteVideo = document.getElementById('remoteVideo');
+      remoteVideo.srcObject = event.streams[0];
+      document.getElementById('videoContainer').classList.add('active');
+      document.getElementById('videoStatus').style.display = 'none';
+    };
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    setLoading('Netwerk info verzamelen...');
+    await waitForIce(peerConnection);
+    hideLoading();
+    const offerCode = btoa(JSON.stringify(peerConnection.localDescription));
+    document.getElementById('offerCode').textContent = offerCode;
+    document.getElementById('offerSection').style.display = 'block';
+    document.getElementById('answerSection').style.display = 'block';
+    showSuccess('Stap 1 klaar! Stuur code naar vriend.');
+    btn.textContent = '✅ Stap 1 Klaar';
+  } catch (err) {
+    hideLoading();
+    btn.disabled = false;
+    btn.textContent = '🔗 Maak verbinding';
+    showError('Camera fout: ' + err.message);
+  }
+}
+
+function waitForIce(pc) {
+  return new Promise((resolve) => {
+    if (pc.iceGatheringState === 'complete') {
+      resolve();
+      return;
+    }
+    const check = () => {
+      if (pc.iceGatheringState === 'complete') {
+        pc.removeEventListener('icegatheringstatechange', check);
+        resolve();
+      }
+    };
+    pc.addEventListener('icegatheringstatechange', check);
+    setTimeout(() => {
+      pc.removeEventListener('icegatheringstatechange', check);
+      resolve();
+    }, 6000);
+  });
+}
+
+async function completeConnection() {
+  const answerCode = document.getElementById('answerInput').value.trim();
+  if (!answerCode) {
+    showError('Plak de code van je vriend!');
+    return;
+  }
+  try {
+    let answer;
+    try {
+      answer = JSON.parse(atob(answerCode));
+    } catch (e) {
+      throw new Error('Ongeldige code. Plak de VOLLEDIGE code!');
+    }
+    await peerConnection.setRemoteDescription(answer);
+    isConnected = true;
+    updateStatus('connected', '🟢 Verbonden!');
+    showSuccess('Verbonden! 🎉');
+    document.getElementById('setup-panel').style.display = 'none';
+    document.getElementById('user-list').style.display = 'block';
+    const mesh = createUserDot(myId, myLocation.lat, myLocation.lng, myName + ' (jij)', myLocation.city);
+    users.set(myId, { id: myId, lat: myLocation.lat, lng: myLocation.lng, name: myName + ' (jij)', city: myLocation.city, mesh });
+    const friendId = 'friend_' + Math.random().toString(36).substr(2, 5);
+    const friendMesh = createUserDot(friendId, myLocation.lat + 0.5, myLocation.lng + 0.5, 'Vriend', 'Locatie');
+    users.set(friendId, { id: friendId, lat: myLocation.lat + 0.5, lng: myLocation.lng + 0.5, name: 'Vriend', city: 'Locatie', mesh: friendMesh });
+    updateCounter();
+    updateUserList();
+  } catch (err) {
+    showError('Fout: ' + err.message);
+  }
+}
+
+function updateCounter() {
+  const count = users.size;
+  document.getElementById('counter').textContent = `🟢 ${count} online`;
+}
+
+function updateUserList() {
+  const container = document.getElementById('userListContent');
+  container.innerHTML = '';
+  users.forEach((user) => {
+    if (user.id === myId) return;
+    const div = document.createElement('div');
+    div.className = 'user-item';
+    div.innerHTML = `<div style="font-weight:bold;">${user.name}</div><div class="status">📍 ${user.city}</div>`;
+    div.onclick = () => selectUser(user.id);
+    container.appendChild(div);
+  });
+}
+
+function selectUser(userId) {
+  const user = users.get(userId);
+  if (user && user.id !== myId) {
+    selectedUser = user;
+    showPopup(user);
+    const pos = latLngToVector3(user.lat, user.lng, 2);
+    const start = camera.position.clone();
+    let t = 0;
+    function zoom() {
+      t += 0.03;
+      camera.position.lerpVectors(start, pos, t);
+      camera.lookAt(latLngToVector3(user.lat, user.lng, 0));
+      if (t < 1) requestAnimationFrame(zoom);
+    }
+    zoom();
+  }
+}
+
+function showPopup(user) {
+  document.getElementById('popup').style.display = 'block';
+  document.getElementById('popupName').textContent = user.name;
+  document.getElementById('popupLocation').textContent = `📍 ${user.city}`;
+  document.getElementById('popupAvatar').textContent = user.name.charAt(0).toUpperCase();
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  document.getElementById('popupTime').textContent = `🕒 ${timeStr}`;
+  const callBtn = document.getElementById('callBtn');
+  callBtn.style.display = 'block';
+  callBtn.disabled = false;
+  callBtn.textContent = '📹 Bekijk live feed';
+  callBtn.onclick = startCall;
+}
+
+function closePopup() {
+  document.getElementById('popup').style.display = 'none';
+}
+
+function startCall() {
+  if (!selectedUser) return;
+  document.getElementById('videoContainer').classList.add('active');
+  document.getElementById('videoStatus').style.display = 'none';
+  document.getElementById('callBtn').textContent = '📹 Live!';
+}
+
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+
+function tap(x, y) {
+  pointer.x = (x / innerWidth) * 2 - 1;
+  pointer.y = -(y / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const userMeshes = [];
+  users.forEach((user) => { if (user.mesh) userMeshes.push(user.mesh); });
+  const hits = raycaster.intersectObjects(userMeshes, true);
+  if (hits.length > 0) {
+    let hitObj = hits[0].object;
+    while (hitObj.parent && !hitObj.userData.userId) {
+      hitObj = hitObj.parent;
+    }
+    if (hitObj.userData && hitObj.userData.userId && hitObj.userData.userId !== myId) {
+      selectUser(hitObj.userData.userId);
+      document.getElementById('info').innerText = `📡 ${hitObj.userData.name}`;
+    }
+  }
+}
+
+window.addEventListener('pointerdown', e => tap(e.clientX, e.clientY));
+
+function updateSunPosition() {
+  const now = new Date();
+  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+  const hours = (utc / 3600000) % 24;
+  const angle = (hours / 24) * Math.PI * 2 - Math.PI / 2;
+  sun.position.x = Math.cos(angle) * 5;
+  sun.position.z = Math.sin(angle) * 5;
+  sun.position.y = Math.sin(angle * 0.5) * 2;
+}
+
+function ani
