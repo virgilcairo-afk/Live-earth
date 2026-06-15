@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Live Earth</title>
+<title>Live Earth - Demo</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { margin: 0; overflow: hidden; background: black; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; }
@@ -16,8 +16,6 @@ body { margin: 0; overflow: hidden; background: black; font-family: -apple-syste
 #counter { top: 50px; }
 #connection-status { top: 90px; font-size: 11px; }
 #connection-status.connected { color: #00ff88; }
-#connection-status.connecting { color: #ffaa00; }
-#connection-status.disconnected { color: #ff4444; }
 #setup-panel {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   background: rgba(0,0,0,.92); color: white; padding: 25px; border-radius: 20px;
@@ -37,15 +35,6 @@ body { margin: 0; overflow: hidden; background: black; font-family: -apple-syste
 }
 #setup-panel button:disabled { opacity: 0.5; cursor: not-allowed; }
 #setup-panel .hint { font-size: 12px; color: #888; margin-top: 12px; line-height: 1.5; }
-#setup-panel .room-display {
-  background: rgba(0,255,204,0.1); border: 1px solid #00ffcc; padding: 15px;
-  border-radius: 12px; margin: 15px 0; font-size: 28px; font-weight: bold;
-  color: #00ffcc; letter-spacing: 3px; font-family: monospace;
-}
-#setup-panel .copy-btn {
-  background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.3);
-  padding: 10px; margin-top: 5px; font-size: 14px;
-}
 #setup-panel .error-box {
   background: rgba(255,0,0,0.2); border: 1px solid #ff4444; padding: 10px; border-radius: 8px;
   color: #ff8888; font-size: 13px; margin-top: 10px; display: none;
@@ -70,7 +59,7 @@ body { margin: 0; overflow: hidden; background: black; font-family: -apple-syste
   display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold;
 }
 #popup .video-container {
-  width: 100%; height: 180px; background: #111; border-radius: 12px;
+  width: 100%; height: 200px; background: #111; border-radius: 12px;
   margin: 12px 0; display: none; align-items: center; justify-content: center;
   overflow: hidden; position: relative;
 }
@@ -122,31 +111,22 @@ body { margin: 0; overflow: hidden; background: black; font-family: -apple-syste
 </head>
 <body>
 
-<div id="info">🌍 Live Earth</div>
+<div id="info">🌍 Live Earth - Demo</div>
 <div id="counter">🟢 0 online</div>
-<div id="connection-status" class="disconnected">⚪ Geen verbinding</div>
+<div id="connection-status" class="connected">🟢 Klaar</div>
 
 <div id="setup-panel">
   <h2>🌍 Live Earth</h2>
-  <p>Directe P2P verbinding</p>
+  <p>Werkende demo - Test het volledige concept</p>
   <input type="text" id="userName" placeholder="Jouw naam" value="" autocomplete="off">
-  <button id="startBtn" onclick="startConnection()">🔗 Maak verbinding</button>
-  <div id="offerSection" style="display:none; margin-top:15px;">
-    <p style="color:#00ffcc; font-size:13px;">📋 Kopieer deze code:</p>
-    <div class="code-box" id="offerCode"></div>
-    <button class="copy-btn" onclick="copyCode()">📋 Kopieer</button>
-  </div>
-  <div id="answerSection" style="display:none; margin-top:15px;">
-    <p style="color:#ffaa00; font-size:13px;">📋 Plak code van vriend:</p>
-    <textarea id="answerInput" placeholder="Plak hier..." style="width:100%; min-height:80px; background:#222; color:white; border:1px solid #444; border-radius:8px; padding:10px; font-size:11px; font-family:monospace;"></textarea>
-    <button onclick="completeConnection()">✅ Verbind</button>
-  </div>
+  <button id="startBtn" onclick="startDemo()">🚀 Start Demo</button>
   <div class="error-box" id="errorBox"></div>
   <div class="success-box" id="successBox"></div>
   <p class="hint">
-    💡 Camera & locatie toegang vereist<br>
-    🔄 Deel codes via WhatsApp/Signal<br>
-    📱 Werkt op mobiel browsers
+    💡 Deze demo toont het volledige concept<br>
+    📍 Camera & locatie toegang vereist<br>
+    🎥 "Live feed" opent jouw camera (lokaal)<br>
+    👤 Je vriend verschijnt als test-gebruiker
   </p>
 </div>
 
@@ -169,9 +149,9 @@ body { margin: 0; overflow: hidden; background: black; font-family: -apple-syste
   <p id="popupStatus">🟢 Online</p>
   <div class="video-container" id="videoContainer">
     <video id="remoteVideo" autoplay playsinline></video>
-    <div class="video-status" id="videoStatus">Verbinden...</div>
+    <div class="video-status" id="videoStatus">Camera starten...</div>
   </div>
-  <button id="callBtn" onclick="startCall()">📹 Bekijk live feed</button>
+  <button id="callBtn" onclick="startLiveFeed()">📹 Bekijk live feed</button>
   <button class="secondary" onclick="closePopup()">Sluiten</button>
 </div>
 
@@ -190,8 +170,7 @@ let myLocation = { lat: 52.3676, lng: 4.9041, city: 'Amsterdam' };
 let users = new Map();
 let selectedUser = null;
 let localStream = null;
-let peerConnection = null;
-let isConnected = false;
+let isStarted = false;
 
 function showError(msg) {
   const el = document.getElementById('errorBox');
@@ -209,25 +188,6 @@ function setLoading(text) {
 }
 function hideLoading() {
   document.getElementById('loading').classList.remove('active');
-}
-function updateStatus(status, text) {
-  const el = document.getElementById('connection-status');
-  el.className = status;
-  el.textContent = text;
-}
-function copyCode() {
-  const code = document.getElementById('offerCode').textContent;
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(code).then(() => alert('Code gekopieerd!'));
-  } else {
-    const input = document.createElement('input');
-    input.value = code;
-    document.body.appendChild(input);
-    input.select();
-    document.execCommand('copy');
-    document.body.removeChild(input);
-    alert('Code gekopieerd!');
-  }
 }
 
 const scene = new THREE.Scene();
@@ -308,14 +268,7 @@ function createUserDot(userId, lat, lng, name, city) {
   return group;
 }
 
-const RTC_CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' }
-  ]
-};
-
-async function startConnection() {
+async function startDemo() {
   myName = document.getElementById('userName').value.trim();
   if (!myName) {
     showError('Vul je naam in!');
@@ -343,90 +296,45 @@ async function startConnection() {
         myLocation.city = 'Mijn Locatie';
       } catch (e) {}
     }
-    setLoading('Verbinding voorbereiden...');
-    peerConnection = new RTCPeerConnection(RTC_CONFIG);
-    localStream.getTracks().forEach(track => {
-      peerConnection.addTrack(track, localStream);
-    });
-    peerConnection.ontrack = (event) => {
-      const remoteVideo = document.getElementById('remoteVideo');
-      remoteVideo.srcObject = event.streams[0];
-      document.getElementById('videoContainer').classList.add('active');
-      document.getElementById('videoStatus').style.display = 'none';
-    };
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-    setLoading('Netwerk info verzamelen...');
-    await waitForIce(peerConnection);
     hideLoading();
-    const offerCode = btoa(JSON.stringify(peerConnection.localDescription));
-    document.getElementById('offerCode').textContent = offerCode;
-    document.getElementById('offerSection').style.display = 'block';
-    document.getElementById('answerSection').style.display = 'block';
-    showSuccess('Stap 1 klaar! Stuur code naar vriend.');
-    btn.textContent = '✅ Stap 1 Klaar';
+    isStarted = true;
+    document.getElementById('setup-panel').style.display = 'none';
+    document.getElementById('user-list').style.display = 'block';
+    document.getElementById('counter').textContent = '🟢 2 online';
+    const myMesh = createUserDot(myId, myLocation.lat, myLocation.lng, myName + ' (jij)', myLocation.city);
+    users.set(myId, { id: myId, lat: myLocation.lat, lng: myLocation.lng, name: myName + ' (jij)', city: myLocation.city, mesh: myMesh });
+    const friendId = 'friend_demo';
+    const friendLat = myLocation.lat + (Math.random() - 0.5) * 2;
+    const friendLng = myLocation.lng + (Math.random() - 0.5) * 2;
+    const friendMesh = createUserDot(friendId, friendLat, friendLng, 'Vriend (Demo)', 'In de buurt');
+    users.set(friendId, { id: friendId, lat: friendLat, lng: friendLng, name: 'Vriend (Demo)', city: 'In de buurt', mesh: friendMesh });
+    updateUserList();
+    showSuccess('Demo gestart! Tik op het groene punt van je vriend.');
   } catch (err) {
     hideLoading();
     btn.disabled = false;
-    btn.textContent = '🔗 Maak verbinding';
-    showError('Camera fout: ' + err.message);
+    btn.textContent = '🚀 Start Demo';
+    showError('Camera fout: ' + err.message + '. Zorg dat je toestemming geeft!');
   }
 }
 
-function waitForIce(pc) {
-  return new Promise((resolve) => {
-    if (pc.iceGatheringState === 'complete') {
-      resolve();
-      return;
-    }
-    const check = () => {
-      if (pc.iceGatheringState === 'complete') {
-        pc.removeEventListener('icegatheringstatechange', check);
-        resolve();
-      }
-    };
-    pc.addEventListener('icegatheringstatechange', check);
-    setTimeout(() => {
-      pc.removeEventListener('icegatheringstatechange', check);
-      resolve();
-    }, 6000);
-  });
-}
-
-async function completeConnection() {
-  const answerCode = document.getElementById('answerInput').value.trim();
-  if (!answerCode) {
-    showError('Plak de code van je vriend!');
-    return;
-  }
+async function startLiveFeed() {
+  if (!selectedUser) return;
+  const callBtn = document.getElementById('callBtn');
+  callBtn.disabled = true;
+  callBtn.textContent = '📹 Starten...';
   try {
-    let answer;
-    try {
-      answer = JSON.parse(atob(answerCode));
-    } catch (e) {
-      throw new Error('Ongeldige code. Plak de VOLLEDIGE code!');
-    }
-    await peerConnection.setRemoteDescription(answer);
-    isConnected = true;
-    updateStatus('connected', '🟢 Verbonden!');
-    showSuccess('Verbonden! 🎉');
-    document.getElementById('setup-panel').style.display = 'none';
-    document.getElementById('user-list').style.display = 'block';
-    const mesh = createUserDot(myId, myLocation.lat, myLocation.lng, myName + ' (jij)', myLocation.city);
-    users.set(myId, { id: myId, lat: myLocation.lat, lng: myLocation.lng, name: myName + ' (jij)', city: myLocation.city, mesh });
-    const friendId = 'friend_' + Math.random().toString(36).substr(2, 5);
-    const friendMesh = createUserDot(friendId, myLocation.lat + 0.5, myLocation.lng + 0.5, 'Vriend', 'Locatie');
-    users.set(friendId, { id: friendId, lat: myLocation.lat + 0.5, lng: myLocation.lng + 0.5, name: 'Vriend', city: 'Locatie', mesh: friendMesh });
-    updateCounter();
-    updateUserList();
+    const remoteVideo = document.getElementById('remoteVideo');
+    remoteVideo.srcObject = localStream;
+    document.getElementById('videoContainer').classList.add('active');
+    document.getElementById('videoStatus').style.display = 'none';
+    callBtn.textContent = '📹 Live!';
+    callBtn.disabled = false;
   } catch (err) {
-    showError('Fout: ' + err.message);
+    callBtn.disabled = false;
+    callBtn.textContent = '📹 Bekijk live feed';
+    alert('Camera fout: ' + err.message);
   }
-}
-
-function updateCounter() {
-  const count = users.size;
-  document.getElementById('counter').textContent = `🟢 ${count} online`;
 }
 
 function updateUserList() {
@@ -472,24 +380,21 @@ function showPopup(user) {
   callBtn.style.display = 'block';
   callBtn.disabled = false;
   callBtn.textContent = '📹 Bekijk live feed';
-  callBtn.onclick = startCall;
 }
 
 function closePopup() {
   document.getElementById('popup').style.display = 'none';
-}
-
-function startCall() {
-  if (!selectedUser) return;
-  document.getElementById('videoContainer').classList.add('active');
-  document.getElementById('videoStatus').style.display = 'none';
-  document.getElementById('callBtn').textContent = '📹 Live!';
+  document.getElementById('videoContainer').classList.remove('active');
+  document.getElementById('videoStatus').style.display = 'block';
+  const callBtn = document.getElementById('callBtn');
+  callBtn.textContent = '📹 Bekijk live feed';
 }
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 
 function tap(x, y) {
+  if (!isStarted) return;
   pointer.x = (x / innerWidth) * 2 - 1;
   pointer.y = -(y / innerHeight) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
@@ -520,4 +425,33 @@ function updateSunPosition() {
   sun.position.y = Math.sin(angle * 0.5) * 2;
 }
 
-function ani
+function animate(time) {
+  requestAnimationFrame(animate);
+  earth.rotation.y += 0.0003;
+  clouds.rotation.y += 0.0005;
+  stars.rotation.y += 0.0001;
+  updateSunPosition();
+  users.forEach((user, id) => {
+    if (user.mesh) {
+      const data = user.mesh.userData;
+      const s = 1 + Math.sin(time * 0.003 + id.charCodeAt(0)) * 0.3;
+      data.dot.scale.set(s, s, s);
+      data.ring.scale.set(s * 1.2, s * 1.2, 1);
+      data.pulse.scale.set(s * 1.5, s * 1.5, 1);
+      data.pulse.material.opacity = 0.1 + Math.sin(time * 0.005 + id.charCodeAt(0)) * 0.1;
+    }
+  });
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
