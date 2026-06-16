@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Live Earth - PeerJS</title>
+<title>Live Earth v4</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { margin: 0; overflow: hidden; background: black; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; }
-#info, #counter, #connection-status {
+#info, #counter, #connection-status, #camera-switch {
   position: absolute; left: 10px; color: white;
   background: rgba(0,0,0,.7); padding: 8px 12px; border-radius: 10px; z-index: 10;
   font-size: 13px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);
@@ -18,6 +18,21 @@ body { margin: 0; overflow: hidden; background: black; font-family: -apple-syste
 #connection-status.connected { color: #00ff88; }
 #connection-status.connecting { color: #ffaa00; }
 #connection-status.disconnected { color: #ff4444; }
+#camera-switch {
+  top: 130px; cursor: pointer; background: rgba(0,255,204,0.2); border: 1px solid #00ffcc;
+}
+#camera-switch:active { transform: scale(0.95); }
+#zoom-controls {
+  position: absolute; bottom: 20px; right: 20px; z-index: 10;
+  display: flex; flex-direction: column; gap: 8px;
+}
+#zoom-controls button {
+  width: 45px; height: 45px; border-radius: 50%; border: none;
+  background: rgba(0,0,0,.7); color: white; font-size: 24px; font-weight: bold;
+  cursor: pointer; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);
+  display: flex; align-items: center; justify-content: center;
+}
+#zoom-controls button:active { transform: scale(0.9); }
 #setup-panel {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   background: rgba(0,0,0,.92); color: white; padding: 25px; border-radius: 20px;
@@ -122,15 +137,21 @@ body { margin: 0; overflow: hidden; background: black; font-family: -apple-syste
 </head>
 <body>
 
-<div id="info">🌍 Live Earth - PeerJS</div>
+<div id="info">🌍 Live Earth v4</div>
 <div id="counter">🟢 0 online</div>
 <div id="connection-status" class="disconnected">⚪ Niet verbonden</div>
+<div id="camera-switch" onclick="switchCamera()" style="display:none;">📷 🔄</div>
+
+<div id="zoom-controls">
+  <button onclick="zoomIn()">+</button>
+  <button onclick="zoomOut()">−</button>
+</div>
 
 <div id="setup-panel">
   <h2>🌍 Live Earth</h2>
-  <p>Echte verbinding tussen 2 telefoons</p>
+  <p>Meerdere gebruikers, camera switch, betere zoom</p>
   <input type="text" id="userName" placeholder="Jouw naam" value="" autocomplete="off">
-  <button id="startBtn" onclick="startPeer()">🚀 Start</button>
+  <button id="startBtn" onclick="startApp()">🚀 Start</button>
   <div id="myIdSection" style="display:none; margin-top:15px;">
     <p style="color:#00ffcc; font-size:13px;">📋 Jouw ID (deel met vriend):</p>
     <div class="id-box" id="myPeerId"></div>
@@ -144,10 +165,10 @@ body { margin: 0; overflow: hidden; background: black; font-family: -apple-syste
   <div class="error-box" id="errorBox"></div>
   <div class="success-box" id="successBox"></div>
   <p class="hint">
-    💡 Geen account nodig<br>
-    📍 Camera & locatie toegang vereist<br>
-    🔄 Deel ID via WhatsApp/Signal<br>
-    📱 Werkt op 2 telefoons
+    💡 Camera switch: tik 📷🔄 rechtsboven<br>
+    🔍 Zoom: + en − knoppen rechtsonder<br>
+    👥 Demo: 10 test-gebruikers verschijnen<br>
+    🔄 Deel ID via WhatsApp/Signal
   </p>
 </div>
 
@@ -178,7 +199,7 @@ body { margin: 0; overflow: hidden; background: black; font-family: -apple-syste
 
 <div id="loading">
   <div class="spinner"></div>
-  <p id="loadingText">Verbinden...</p>
+  <p id="loadingText">Camera starten...</p>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
@@ -195,6 +216,20 @@ let localStream = null;
 let peer = null;
 let currentCall = null;
 let isConnected = false;
+let currentCamera = 'user';
+
+const demoUsers = [
+  { name: 'Lisa', city: 'Amsterdam', lat: 52.3676, lng: 4.9041 },
+  { name: 'Ahmed', city: 'Cairo', lat: 30.0444, lng: 31.2357 },
+  { name: 'Yuki', city: 'Tokyo', lat: 35.6762, lng: 139.6503 },
+  { name: 'Maria', city: 'São Paulo', lat: -23.5505, lng: -46.6333 },
+  { name: 'James', city: 'New York', lat: 40.7128, lng: -74.0060 },
+  { name: 'Sophie', city: 'Paris', lat: 48.8566, lng: 2.3522 },
+  { name: 'Raj', city: 'Mumbai', lat: 19.0760, lng: 72.8777 },
+  { name: 'Chen', city: 'Beijing', lat: 39.9042, lng: 116.4074 },
+  { name: 'Olivia', city: 'Sydney', lat: -33.8688, lng: 151.2093 },
+  { name: 'Lucas', city: 'Berlin', lat: 52.5200, lng: 13.4050 },
+];
 
 function showError(msg) {
   const el = document.getElementById('errorBox');
@@ -233,6 +268,45 @@ function copyId() {
   }
 }
 
+async function switchCamera() {
+  if (!localStream) return;
+  localStream.getTracks().forEach(track => track.stop());
+  currentCamera = currentCamera === 'user' ? 'environment' : 'user';
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: currentCamera },
+      audio: false
+    });
+    document.getElementById('local-video').srcObject = localStream;
+    if (currentCall) {
+      const newCall = peer.call(currentCall.peer, localStream);
+      newCall.on('stream', (remoteStream) => {
+        document.getElementById('remoteVideo').srcObject = remoteStream;
+      });
+    }
+  } catch (err) {
+    alert('Camera switch mislukt: ' + err.message);
+  }
+}
+
+function zoomIn() {
+  const target = controls.target.clone();
+  const direction = camera.position.clone().sub(target).normalize();
+  const newPos = camera.position.clone().sub(direction.multiplyScalar(0.3));
+  if (newPos.length() > controls.minDistance) {
+    camera.position.copy(newPos);
+  }
+}
+
+function zoomOut() {
+  const target = controls.target.clone();
+  const direction = camera.position.clone().sub(target).normalize();
+  const newPos = camera.position.clone().add(direction.multiplyScalar(0.3));
+  if (newPos.length() < controls.maxDistance) {
+    camera.position.copy(newPos);
+  }
+}
+
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
 camera.position.z = 2.7;
@@ -245,8 +319,9 @@ document.body.appendChild(renderer.domElement);
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
-controls.minDistance = 1.5;
+controls.minDistance = 1.05;
 controls.maxDistance = 5;
+controls.enablePan = false;
 
 scene.add(new THREE.AmbientLight(0x444444));
 const sun = new THREE.DirectionalLight(0xffffff, 1.2);
@@ -254,27 +329,34 @@ sun.position.set(5, 0, 5);
 scene.add(sun);
 
 const earth = new THREE.Mesh(
-  new THREE.SphereGeometry(1, 64, 64),
+  new THREE.SphereGeometry(1, 128, 128),
   new THREE.MeshPhongMaterial({
-    map: new THREE.TextureLoader().load("https://threejs.org/examples/textures/land_ocean_ice_cloud_2048.jpg")
+    map: new THREE.TextureLoader().load("https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg"),
+    bumpMap: new THREE.TextureLoader().load("https://unpkg.com/three-globe/example/img/earth-topology.png"),
+    bumpScale: 0.05,
+    specular: new THREE.Color(0x111111),
+    shininess: 10
   })
 );
 scene.add(earth);
 
 const clouds = new THREE.Mesh(
-  new THREE.SphereGeometry(1.01, 64, 64),
-  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
+  new THREE.SphereGeometry(1.01, 128, 128),
+  new THREE.MeshBasicMaterial({
+    map: new THREE.TextureLoader().load("https://unpkg.com/three-globe/example/img/earth-clouds.png"),
+    transparent: true, opacity: 0.3
+  })
 );
 scene.add(clouds);
 
 const starGeometry = new THREE.BufferGeometry();
-const starCount = 2000;
+const starCount = 3000;
 const starPositions = new Float32Array(starCount * 3);
 for (let i = 0; i < starCount * 3; i++) {
-  starPositions[i] = (Math.random() - 0.5) * 100;
+  starPositions[i] = (Math.random() - 0.5) * 200;
 }
 starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
-const stars = new THREE.Points(starGeometry, new THREE.PointsMaterial({ color: 0xffffff, size: 0.1 }));
+const stars = new THREE.Points(starGeometry, new THREE.PointsMaterial({ color: 0xffffff, size: 0.15 }));
 scene.add(stars);
 
 function latLngToVector3(lat, lng, radius = 1) {
@@ -291,16 +373,16 @@ function createUserDot(userId, lat, lng, name, city) {
   const position = latLngToVector3(lat, lng, 1.02);
   const group = new THREE.Group();
   const dot = new THREE.Mesh(
-    new THREE.SphereGeometry(0.04, 16, 16),
+    new THREE.SphereGeometry(0.03, 16, 16),
     new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.9 })
   );
   const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.05, 0.07, 32),
+    new THREE.RingGeometry(0.04, 0.06, 32),
     new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.4, side: THREE.DoubleSide })
   );
   ring.lookAt(position.clone().multiplyScalar(2));
   const pulse = new THREE.Mesh(
-    new THREE.RingGeometry(0.08, 0.09, 32),
+    new THREE.RingGeometry(0.07, 0.08, 32),
     new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.2, side: THREE.DoubleSide })
   );
   pulse.lookAt(position.clone().multiplyScalar(2));
@@ -311,7 +393,7 @@ function createUserDot(userId, lat, lng, name, city) {
   return group;
 }
 
-async function startPeer() {
+async function startApp() {
   myName = document.getElementById('userName').value.trim();
   if (!myName) {
     showError('Vul je naam in!');
@@ -323,11 +405,12 @@ async function startPeer() {
   setLoading('Camera starten...');
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ 
-      video: { facingMode: 'user' }, 
+      video: { facingMode: currentCamera }, 
       audio: false 
     });
     document.getElementById('local-video').srcObject = localStream;
     document.getElementById('local-video').classList.add('active');
+    document.getElementById('camera-switch').style.display = 'block';
     setLoading('Locatie ophalen...');
     if (navigator.geolocation) {
       try {
@@ -361,7 +444,13 @@ async function startPeer() {
       btn.textContent = '✅ Klaar';
       const mesh = createUserDot(myPeerId, myLocation.lat, myLocation.lng, myName + ' (jij)', myLocation.city);
       users.set(myPeerId, { id: myPeerId, lat: myLocation.lat, lng: myLocation.lng, name: myName + ' (jij)', city: myLocation.city, mesh });
+      demoUsers.forEach((u, i) => {
+        const id = 'demo_' + i;
+        const mesh = createUserDot(id, u.lat, u.lng, u.name, u.city);
+        users.set(id, { id, lat: u.lat, lng: u.lng, name: u.name, city: u.city, mesh });
+      });
       updateCounter();
+      updateUserList();
     });
     peer.on('connection', (conn) => {
       handleConnection(conn);
@@ -435,7 +524,7 @@ function connectToFriend() {
   hideLoading();
   isConnected = true;
   updateStatus('connected', '🟢 Verbonden!');
-  showSuccess('Verbonden! Tik op het groene punt van je vriend.');
+  showSuccess('Verbonden! Tik op een groen punt.');
   document.getElementById('setup-panel').style.display = 'none';
   document.getElementById('user-list').style.display = 'block';
 }
@@ -509,7 +598,7 @@ const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 
 function tap(x, y) {
-  if (!isConnected) return;
+  if (!isConnected && users.size === 0) return;
   pointer.x = (x / innerWidth) * 2 - 1;
   pointer.y = -(y / innerHeight) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
